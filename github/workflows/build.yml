@@ -1,0 +1,55 @@
+name: Build debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          mkdir -p project
+          unzip -q files.zip -d project
+          for z in $(find project -name "MovieBoxCompanion.zip"); do
+            unzip -q "$z" -d project
+          done
+          DIR=$(dirname "$(find project -name settings.gradle.kts | head -1)")
+          echo "Project folder: $DIR"
+          echo "DIR=$DIR" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Build debug APK
+        run: |
+          cd "$DIR"
+          gradle assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/MovieBoxCompanion-debug.apk"
+
+      - name: Save APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MovieBoxCompanion-debug-apk
+          path: MovieBoxCompanion-debug.apk
+
+      - name: Publish APK as a Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" MovieBoxCompanion-debug.apk \
+            --title "Debug build ${{ github.run_number }}" \
+            --notes "Debug APK built by GitHub Actions."
